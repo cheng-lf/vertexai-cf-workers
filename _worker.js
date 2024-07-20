@@ -1,3 +1,5 @@
+// _worker.js
+
 const MODELS = {
     "claude-3-opus": {
         vertexName: "claude-3-opus@20240229",
@@ -33,11 +35,12 @@ const MODELS = {
     },
 };
 
-addEventListener("fetch", (event) => {
-    event.respondWith(handleRequest(event.request));
-});
+export async function onRequest(context) {
+    const { request, env } = context;
+    return handleRequest(request, env);
+}
 
-async function handleRequest(request) {
+async function handleRequest(request, env) {
     let headers = new Headers({
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Headers": "*",
@@ -50,11 +53,11 @@ async function handleRequest(request) {
     }
 
     const apiKey = request.headers.get("x-api-key");
-    if (!API_KEY || API_KEY !== apiKey) {
+    if (!env.API_KEY || env.API_KEY !== apiKey) {
         return createErrorResponse(401, "authentication_error", "invalid x-api-key");
     }
 
-    const signedJWT = await createSignedJWT(CLIENT_EMAIL, PRIVATE_KEY)
+    const signedJWT = await createSignedJWT(env.CLIENT_EMAIL, env.PRIVATE_KEY)
     const [token, err] = await exchangeJwtForAccessToken(signedJWT)
     if (token === null) {
         console.log(`Invalid jwt token: ${err}`)
@@ -68,7 +71,7 @@ async function handleRequest(request) {
             case "/v1/v1/messages":
             case "/v1/messages":
             case "/messages":
-                return handleMessagesEndpoint(request, token);
+                return handleMessagesEndpoint(request, token, env);
             default:
                 return createErrorResponse(404, "not_found_error", "Not Found");
         }
@@ -78,7 +81,7 @@ async function handleRequest(request) {
     }
 }
  
-async function handleMessagesEndpoint(request, api_token) {
+async function handleMessagesEndpoint(request, api_token, env) {
     const anthropicVersion = request.headers.get('anthropic-version');
     if (anthropicVersion && anthropicVersion !== '2023-06-01') {
         return createErrorResponse(400, "invalid_request_error", "API version not supported");
@@ -101,7 +104,7 @@ async function handleMessagesEndpoint(request, api_token) {
 
     const stream = payload.stream || false;
     const model = MODELS[payload.model];
-    const url = `https://${model.region}-aiplatform.googleapis.com/v1/projects/${PROJECT}/locations/${model.region}/publishers/anthropic/models/${model.vertexName}:streamRawPredict`;
+    const url = `https://${model.region}-aiplatform.googleapis.com/v1/projects/${env.PROJECT}/locations/${model.region}/publishers/anthropic/models/${model.vertexName}:streamRawPredict`;
     delete payload.model;
 
     let response, contentType
